@@ -169,7 +169,75 @@ async def mcp_research_example():
     return report
 ```
 
-> For comprehensive MCP documentation and advanced examples, visit the [MCP Integration Guide](https://docs.gptr.dev/docs/gpt-researcher/retrievers/mcp-configs).
+>  For comprehensive MCP documentation and advanced examples, visit the [MCP Integration Guide](https://docs.gptr.dev/docs/gpt-researcher/retrievers/mcp-configs).
+
+### 🔍 DuckDuckGo & Qdrant Integration
+
+GPT Researcher now supports **DuckDuckGo** as the default search retriever and **Qdrant** for persistent vector storage of research findings.
+
+#### DuckDuckGo Configuration
+
+DuckDuckGo is now the default retriever. No API key required!
+
+```bash
+export RETRIEVER=duckduckgo  # Already the default
+```
+
+#### Qdrant Vector Store Setup
+
+Qdrant enables persistent storage and retrieval of research context across sessions, improving research quality through accumulated knowledge.
+
+**1. Start Qdrant with Docker:**
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+**2. Configure Qdrant in your `.env` file:**
+```bash
+# Enable Qdrant integration
+QDRANT_ENABLED=true
+QDRANT_HOST=localhost
+QDRANT_PORT=6333
+# Optional: For Qdrant Cloud
+# QDRANT_API_KEY=your_qdrant_api_key
+
+# Embedding model for vector generation
+EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+# Or use OpenAI embeddings:
+# EMBEDDING_MODEL=openai:text-embedding-3-small
+```
+
+**3. Use in your code:**
+```python
+from gpt_researcher import GPTResearcher
+import asyncio
+import os
+
+async def research_with_qdrant():
+    # Qdrant will automatically store and retrieve research context
+    os.environ["QDRANT_ENABLED"] = "true"
+    
+    researcher = GPTResearcher(
+        query="What are the latest developments in AI?"
+    )
+    
+    # Research results are automatically stored in Qdrant
+    research_result = await researcher.conduct_research()
+    report = await researcher.write_report()
+    
+    # Subsequent research queries will benefit from previous context
+    return report
+
+asyncio.run(research_with_qdrant())
+```
+
+**Benefits:**
+- 📚 **Persistent Memory**: Research findings are stored across sessions
+- 🔄 **Context Reuse**: Previous research enhances future queries
+- 🚀 **Performance**: No API costs for DuckDuckGo searches
+- 🎯 **Privacy**: Research data stays in your control
+
+**Note**: Qdrant is optional. If disabled, GPT Researcher works with in-memory context as usual.
 
 ## ✨ Deep Research
 

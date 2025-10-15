@@ -96,6 +96,7 @@ rapidfuzz>=3.13.0
 referencing>=0.36.2
 regex>=2024.11.6
 requests>=2.31.0
+sentence-transformers>=2.2.0
 requests-toolbelt>=1.0.0
 rpds-py>=0.25.1
 sgmllib3k>=1.0.0

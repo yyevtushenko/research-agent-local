@@ -1,7 +1,7 @@
 from .base import BaseConfig
 
 DEFAULT_CONFIG: BaseConfig = {
-    "RETRIEVER": "tavily",
+    "RETRIEVER": "duckduckgo",
     "EMBEDDING": "openai:text-embedding-3-small",
     "SIMILARITY_THRESHOLD": 0.42,
     "FAST_LLM": "openai:gpt-4o-mini",
@@ -48,4 +48,6 @@ DEFAULT_CONFIG: BaseConfig = {
     "QDRANT_PORT": 6333,
     "QDRANT_API_KEY": None,
     "QDRANT_COLLECTION_NAME": "research_documents",
+    "EMBEDDING_MODEL": "sentence-transformers/all-MiniLM-L6-v2",  # Default embedding model for Qdrant
+    "QDRANT_ENABLED": False,  # Enable/disable Qdrant integration
 }
