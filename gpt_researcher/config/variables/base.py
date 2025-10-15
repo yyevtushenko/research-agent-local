@@ -41,3 +41,10 @@ class BaseConfig(TypedDict):
     MCP_ALLOWED_ROOT_PATHS: List[str]
     MCP_STRATEGY: str
     REASONING_EFFORT: str
+    QDRANT_HOST: str
+    QDRANT_PORT: int
+    QDRANT_API_KEY: Union[str, None]
+    QDRANT_COLLECTION_NAME: str
+    EMBEDDING_MODEL: str
+    QDRANT_ENABLED: bool
+    VERBOSE: bool

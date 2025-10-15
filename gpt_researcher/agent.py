@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, List, Dict
 import json
 import os
 
@@ -154,6 +154,38 @@ class GPTResearcher:
         self.memory = Memory(
             self.cfg.embedding_provider, self.cfg.embedding_model, **self.cfg.embedding_kwargs
         )
+        
+        # Initialize Qdrant store if enabled
+        self.qdrant_store = None
+        self.embeddings_generator = None
+        if hasattr(self.cfg, 'qdrant_enabled') and self.cfg.qdrant_enabled:
+            try:
+                from .utils.qdrant_store import QdrantStore
+                from .utils.embeddings import create_embeddings_generator
+                
+                self.qdrant_store = QdrantStore(
+                    host=getattr(self.cfg, 'qdrant_host', 'localhost'),
+                    port=getattr(self.cfg, 'qdrant_port', 6333),
+                    api_key=getattr(self.cfg, 'qdrant_api_key', None),
+                    collection_name=getattr(self.cfg, 'qdrant_collection_name', 'research_documents')
+                )
+                
+                # Create collection if it doesn't exist
+                if not self.qdrant_store.collection_exists():
+                    self.embeddings_generator = create_embeddings_generator(self.cfg)
+                    vector_size = self.embeddings_generator.get_embedding_dimension()
+                    self.qdrant_store.create_collection(vector_size=vector_size)
+                else:
+                    self.embeddings_generator = create_embeddings_generator(self.cfg)
+                    
+                if verbose:
+                    import logging
+                    logging.getLogger(__name__).info(f"Qdrant store initialized: {self.qdrant_store.collection_name}")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(f"Failed to initialize Qdrant store: {e}. Continuing without Qdrant.")
+                self.qdrant_store = None
+                self.embeddings_generator = None
         
         # Set default encoding to utf-8
         self.encoding = kwargs.get('encoding', 'utf-8')
@@ -435,6 +467,61 @@ class GPTResearcher:
 
     def add_research_sources(self, sources: list[dict[str, Any]]) -> None:
         self.research_sources.extend(sources)
+    
+    async def store_in_qdrant(self, texts: List[str], metadata: Optional[List[Dict[str, Any]]] = None) -> bool:
+        """
+        Store texts with embeddings in Qdrant.
+        
+        Args:
+            texts: List of text content to store
+            metadata: Optional metadata for each text
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.qdrant_store or not self.embeddings_generator:
+            return False
+        
+        try:
+            # Generate embeddings
+            embeddings = self.embeddings_generator.generate_embeddings(texts)
+            if not embeddings:
+                return False
+            
+            # Store in Qdrant
+            return self.qdrant_store.add_documents(texts, embeddings, metadata)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error storing in Qdrant: {e}")
+            return False
+    
+    async def retrieve_from_qdrant(self, query: str, limit: int = 5, score_threshold: float = 0.7) -> List[Dict[str, Any]]:
+        """
+        Retrieve similar documents from Qdrant.
+        
+        Args:
+            query: Query text
+            limit: Maximum number of results
+            score_threshold: Minimum similarity score
+            
+        Returns:
+            List of retrieved documents with scores
+        """
+        if not self.qdrant_store or not self.embeddings_generator:
+            return []
+        
+        try:
+            # Generate query embedding
+            query_embedding = self.embeddings_generator.generate_embedding(query)
+            if not query_embedding:
+                return []
+            
+            # Search in Qdrant
+            return self.qdrant_store.search(query_embedding, limit, score_threshold)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error retrieving from Qdrant: {e}")
+            return []
 
     def add_references(self, report_markdown: str, visited_urls: set) -> str:
         return add_references(report_markdown, visited_urls)

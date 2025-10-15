@@ -36,6 +36,28 @@ class ResearchConductor:
             self.researcher.websocket,
         )
 
+        # Retrieve relevant context from Qdrant if available
+        qdrant_context = []
+        if self.researcher.qdrant_store:
+            try:
+                qdrant_results = await self.researcher.retrieve_from_qdrant(
+                    query, 
+                    limit=3,
+                    score_threshold=0.7
+                )
+                if qdrant_results:
+                    qdrant_context = [r['text'][:500] for r in qdrant_results]  # Use first 500 chars
+                    self.logger.info(f"Retrieved {len(qdrant_results)} relevant documents from Qdrant")
+                    if self.researcher.verbose:
+                        await stream_output(
+                            "logs",
+                            "qdrant_context",
+                            f"📚 Found {len(qdrant_results)} relevant documents from previous research",
+                            self.researcher.websocket,
+                        )
+            except Exception as e:
+                self.logger.warning(f"Failed to retrieve from Qdrant: {e}")
+
         search_results = await get_search_results(query, self.researcher.retrievers[0], query_domains, researcher=self.researcher)
         self.logger.info(f"Initial search results obtained: {len(search_results)} results")
 
@@ -49,6 +71,11 @@ class ResearchConductor:
         retriever_names = [r.__name__ for r in self.researcher.retrievers]
         # Remove duplicate logging - this will be logged once in conduct_research instead
 
+        # Pass Qdrant context to the planning phase if available
+        kwargs = self.researcher.kwargs.copy()
+        if qdrant_context:
+            kwargs['qdrant_context'] = qdrant_context
+
         outline = await plan_research_outline(
             query=query,
             search_results=search_results,
@@ -58,7 +85,7 @@ class ResearchConductor:
             report_type=self.researcher.report_type,
             cost_callback=self.researcher.add_costs,
             retriever_names=retriever_names,  # Pass retriever names for MCP optimization
-            **self.researcher.kwargs
+            **kwargs
         )
         self.logger.info(f"Research outline planned: {outline}")
         return outline
@@ -503,6 +530,27 @@ class ResearchConductor:
             if scraped_data:
                 web_context = await self.researcher.context_manager.get_similar_content_by_query(sub_query, scraped_data)
                 self.logger.info(f"Web content found for sub-query: {len(str(web_context)) if web_context else 0} chars")
+                
+                # Store scraped content in Qdrant if enabled
+                if self.researcher.qdrant_store and scraped_data:
+                    try:
+                        # Extract text from scraped data
+                        texts = [item.get('raw_content', '') for item in scraped_data if item.get('raw_content')]
+                        if texts:
+                            # Create metadata for each document
+                            metadata = [
+                                {
+                                    'url': item.get('url', ''),
+                                    'title': item.get('title', ''),
+                                    'sub_query': sub_query,
+                                    'query': self.researcher.query
+                                }
+                                for item in scraped_data if item.get('raw_content')
+                            ]
+                            await self.researcher.store_in_qdrant(texts, metadata)
+                            self.logger.info(f"Stored {len(texts)} documents in Qdrant for sub-query: {sub_query}")
+                    except Exception as e:
+                        self.logger.warning(f"Failed to store in Qdrant: {e}")
 
             # Combine MCP context with web context intelligently
             combined_context = self._combine_mcp_and_web_context(mcp_context, web_context, sub_query)
