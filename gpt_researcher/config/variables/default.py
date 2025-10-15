@@ -42,4 +42,10 @@ DEFAULT_CONFIG: BaseConfig = {
     "MCP_ALLOWED_ROOT_PATHS": [],  # List of allowed root paths for local file access
     "MCP_STRATEGY": "fast",  # MCP execution strategy: "fast", "deep", "disabled"
     "REASONING_EFFORT": "medium",
+    
+    # Qdrant vector store settings
+    "QDRANT_HOST": "localhost",
+    "QDRANT_PORT": 6333,
+    "QDRANT_API_KEY": None,
+    "QDRANT_COLLECTION_NAME": "research_documents",
 }
