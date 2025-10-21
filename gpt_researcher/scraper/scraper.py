@@ -26,13 +26,31 @@ class Scraper:
     Scraper class to extract the content from the links
     """
 
-    def __init__(self, urls, user_agent, scraper, worker_pool: WorkerPool):
+    def __init__(self, urls, user_agent, scraper, worker_pool: WorkerPool, excluded_domains=None):
         """
         Initialize the Scraper class.
         Args:
-            urls:
+            urls: List of URLs to scrape
+            user_agent: User agent string
+            scraper: Scraper type to use
+            worker_pool: Worker pool for concurrent operations
+            excluded_domains: List of domains to exclude from scraping
         """
-        self.urls = urls
+        # Filter out excluded domains BEFORE scraping
+        if excluded_domains is None:
+            excluded_domains = []
+
+        filtered_urls = []
+        for url in urls:
+            is_excluded = any(domain.lower() in url.lower()
+                              for domain in excluded_domains)
+            if not is_excluded:
+                filtered_urls.append(url)
+            else:
+                logging.getLogger(__name__).warning(
+                    f"🚫 SCRAPER blocked excluded domain: {url}")
+
+        self.urls = filtered_urls
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
         self.scraper = scraper
@@ -74,7 +92,8 @@ class Scraper:
         if not importlib.util.find_spec(pkg["import_name"]):
             pkg_inst_name = pkg["package_installation_name"]
             init(autoreset=True)
-            print(Fore.YELLOW + f"{pkg_inst_name} not found. Attempting to install...")
+            print(Fore.YELLOW +
+                  f"{pkg_inst_name} not found. Attempting to install...")
             try:
                 subprocess.check_call(
                     [sys.executable, "-m", "pip", "install", pkg_inst_name]
@@ -112,15 +131,6 @@ class Scraper:
                         self.worker_pool.executor, scraper.scrape
                     )
 
-                if len(content) < 100:
-                    self.logger.warning(f"Content too short or empty for {link}")
-                    return {
-                        "url": link,
-                        "raw_content": None,
-                        "image_urls": [],
-                        "title": title,
-                    }
-
                 # Log results
                 self.logger.info(f"\nTitle: {title}")
                 self.logger.info(
@@ -130,8 +140,11 @@ class Scraper:
                 self.logger.info(f"URL: {link}")
                 self.logger.info("=" * 50)
 
-                if not content or len(content) < 100:
-                    self.logger.warning(f"Content too short or empty for {link}")
+                # Store even short content (>= 50 chars) to Qdrant for completeness
+                # This ensures all scraped data persists, not just long-form content
+                if not content or len(content) < 50:
+                    self.logger.warning(
+                        f"Content too short or empty for {link} ({len(content) if content else 0} chars)")
                     return {
                         "url": link,
                         "raw_content": None,

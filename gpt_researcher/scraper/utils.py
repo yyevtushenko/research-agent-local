@@ -48,13 +48,30 @@ def get_relevant_images(soup: BeautifulSoup, url: str) -> list:
         return []
 
 def parse_dimension(value: str) -> int:
-    """Parse dimension value, handling px units"""
-    if value.lower().endswith('px'):
-        value = value[:-2]  # Remove 'px' suffix
+    """Parse dimension value, handling px units, percentages, auto, and floats"""
+    if not value or not isinstance(value, str):
+        return None
+    
+    value = value.strip().lower()
+    
+    # Handle common CSS values
+    if value in ('auto', 'inherit', 'initial', 'unset', 'none'):
+        return None
+    
+    # Remove units
+    if value.endswith('px'):
+        value = value[:-2]
+    elif value.endswith('%'):
+        # For percentages, just remove the % and convert
+        value = value[:-1]
+    elif value.endswith('em') or value.endswith('rem'):
+        return None  # Can't convert relative units without context
+    
     try:
-        return int(value)  # Convert to float first to handle decimal values
-    except ValueError as e:
-        print(f"Error parsing dimension value {value}: {e}")
+        # Convert to float first (handles decimals), then to int
+        return int(float(value))
+    except (ValueError, TypeError):
+        # Silently ignore parse errors - not worth logging
         return None
 
 def extract_title(soup: BeautifulSoup) -> str:

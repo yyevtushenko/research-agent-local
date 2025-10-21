@@ -4,19 +4,21 @@
 import os
 import requests
 import urllib.parse
+from ..utils import truncate_query
 
 
 class SerpApiSearch():
     """
     SerpApi Retriever
     """
+
     def __init__(self, query, query_domains=None):
         """
         Initializes the SerpApiSearch object
         Args:
             query:
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.query_domains = query_domains or None
         self.api_key = self.get_api_key()
 
@@ -76,7 +78,8 @@ class SerpApiSearch():
                         search_response.append(search_result)
                         results_processed += 1
         except Exception as e:
-            print(f"Error: {e}. Failed fetching sources. Resulting in empty response.")
+            print(
+                f"Error: {e}. Failed fetching sources. Resulting in empty response.")
             search_response = []
 
         return search_response

@@ -4,6 +4,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+
 class JSONResearchHandler:
     def __init__(self, json_file):
         self.json_file = json_file
@@ -35,49 +36,59 @@ class JSONResearchHandler:
         with open(self.json_file, 'w') as f:
             json.dump(self.research_data, f, indent=2)
 
+
 def setup_research_logging():
     # Create logs directory if it doesn't exist
     logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
-    
+
     # Generate timestamp for log files
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
+
     # Create log file paths
     log_file = logs_dir / f"research_{timestamp}.log"
     json_file = logs_dir / f"research_{timestamp}.json"
-    
+
     # Configure file handler for research logs
     file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
-    
+    # Changed from INFO to DEBUG to capture all debug logs
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+
     # Get research logger and configure it
     research_logger = logging.getLogger('research')
-    research_logger.setLevel(logging.INFO)
-    
+    # Changed from INFO to DEBUG to capture all debug logs
+    research_logger.setLevel(logging.DEBUG)
+
     # Remove any existing handlers to avoid duplicates
     research_logger.handlers.clear()
-    
+
     # Add file handler
     research_logger.addHandler(file_handler)
-    
+
     # Add stream handler for console output
     console_handler = logging.StreamHandler()
-    console_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    # Changed from default to DEBUG to show debug messages
+    console_handler.setLevel(logging.DEBUG)
+    console_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
     research_logger.addHandler(console_handler)
-    
+
     # Prevent propagation to root logger to avoid duplicate logs
     research_logger.propagate = False
-    
+
     # Create JSON handler
     json_handler = JSONResearchHandler(json_file)
-    
+
     return str(log_file), str(json_file), research_logger, json_handler
 
 # Create a function to get the logger and JSON handler
+
+
 def get_research_logger():
     return logging.getLogger('research')
+
 
 def get_json_handler():
     return getattr(logging.getLogger('research'), 'json_handler', None)

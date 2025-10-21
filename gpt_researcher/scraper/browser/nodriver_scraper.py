@@ -178,7 +178,8 @@ class NoDriverScraper:
                 try:
                     await browser.stop()
                 except Exception as e:
-                    NoDriverScraper.logger.error(f"Failed to release browser: {e}")
+                    NoDriverScraper.logger.error(
+                        f"Failed to release browser: {e}")
                 finally:
                     cls.browsers.discard(browser)
 
@@ -186,6 +187,7 @@ class NoDriverScraper:
         self.url = url
         self.session = session
         self.debug = False
+        self.logger = NoDriverScraper.logger  # Reference class-level logger
 
     async def scrape_async(self) -> Tuple[str, list[dict], str]:
         """Returns tuple of (text, image_urls, title)"""

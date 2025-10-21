@@ -39,5 +39,8 @@ class WebBaseLoaderScraper:
             return content, image_urls, title
 
         except Exception as e:
-            print("Error! : " + str(e))
+            # Log scraping errors without scary traces - these are common (timeouts, SSL issues, etc.)
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Failed to scrape {self.link}: {type(e).__name__}: {str(e)}")
             return "", [], ""

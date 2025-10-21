@@ -20,6 +20,12 @@ class ContextManager:
                 self.researcher.websocket,
             )
 
+        # Get max_results from config - if None or 0, return ALL results (no limit)
+        max_results = getattr(self.researcher.cfg,
+                              'max_context_results_per_query', None)
+        if max_results is None or max_results == 0:
+            max_results = len(pages)  # Return ALL documents when using Qdrant
+
         context_compressor = ContextCompressor(
             documents=pages,
             embeddings=self.researcher.memory.get_embeddings(),
@@ -27,7 +33,7 @@ class ContextManager:
             **self.researcher.kwargs
         )
         return await context_compressor.async_get_context(
-            query=query, max_results=10, cost_callback=self.researcher.add_costs
+            query=query, max_results=max_results, cost_callback=self.researcher.add_costs
         )
 
     async def get_similar_content_by_query_with_vectorstore(self, query, filter):
@@ -37,7 +43,7 @@ class ContextManager:
                 "fetching_query_format",
                 f" Getting relevant content based on query: {query}...",
                 self.researcher.websocket,
-                )
+            )
         vectorstore_compressor = VectorstoreCompressor(
             self.researcher.vector_store, filter=filter, prompt_family=self.researcher.prompt_family,
             **self.researcher.kwargs

@@ -4,19 +4,21 @@
 import os
 import requests
 import urllib.parse
+from ..utils import truncate_query
 
 
 class SearchApiSearch():
     """
     SearchApi Retriever
     """
+
     def __init__(self, query, query_domains=None):
         """
         Initializes the SearchApiSearch object
         Args:
             query:
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.api_key = self.get_api_key()
 
     def get_api_key(self):
@@ -38,9 +40,9 @@ class SearchApiSearch():
         Returns:
 
         """
-        print("SearchApiSearch: Searching with query {0}...".format(self.query))
+        print(
+            "SearchApiSearch: Searching with query {0}...".format(self.query))
         """Useful for general internet search queries using SearchApi."""
-
 
         url = "https://www.searchapi.io/api/v1/search"
         params = {
@@ -78,7 +80,8 @@ class SearchApiSearch():
                         search_response.append(search_result)
                         results_processed += 1
         except Exception as e:
-            print(f"Error: {e}. Failed fetching sources. Resulting in empty response.")
+            print(
+                f"Error: {e}. Failed fetching sources. Resulting in empty response.")
             search_response = []
 
         return search_response

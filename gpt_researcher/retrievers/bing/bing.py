@@ -5,6 +5,7 @@ import os
 import requests
 import json
 import logging
+from ..utils import truncate_query
 
 
 class BingSearch():
@@ -18,7 +19,7 @@ class BingSearch():
         Args:
             query:
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.query_domains = query_domains or None
         self.api_key = self.get_api_key()
         self.logger = logging.getLogger(__name__)
@@ -76,7 +77,8 @@ class BingSearch():
                 f"Error parsing Bing search results: {e}. Resulting in empty response.")
             return []
         if search_results is None:
-            self.logger.warning(f"No search results found for query: {self.query}")
+            self.logger.warning(
+                f"No search results found for query: {self.query}")
             return []
         search_results = []
 

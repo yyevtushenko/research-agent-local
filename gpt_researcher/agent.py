@@ -1,6 +1,7 @@
 from typing import Any, Optional, List, Dict
 import json
 import os
+import asyncio
 
 from .config import Config
 from .memory import Memory
@@ -63,7 +64,7 @@ class GPTResearcher:
     ):
         """
         Initialize a GPT Researcher instance.
-        
+
         Args:
             query (str): The research query or question.
             report_type (str): Type of report to generate.
@@ -100,7 +101,7 @@ class GPTResearcher:
                 - connection_url (str): URL for WebSocket or HTTP connection
                 - connection_type (str): Connection type (stdio, websocket, http)
                 - connection_token (str): Authentication token for remote connections
-                
+
                 Example:
                 ```python
                 mcp_configs=[{
@@ -119,7 +120,8 @@ class GPTResearcher:
         self.report_type = report_type
         self.cfg = Config(config_path)
         self.cfg.set_verbose(verbose)
-        self.report_source = report_source if report_source else getattr(self.cfg, 'report_source', None)
+        self.report_source = report_source if report_source else getattr(
+            self.cfg, 'report_source', None)
         self.report_format = report_format
         self.max_subtopics = max_subtopics
         self.tone = tone if isinstance(tone, Tone) else Tone.Objective
@@ -127,10 +129,12 @@ class GPTResearcher:
         self.document_urls = document_urls
         self.complement_source_urls = complement_source_urls
         self.query_domains = query_domains or []
-        self.research_sources = []  # The list of scraped sources including title, content and images
+        # The list of scraped sources including title, content and images
+        self.research_sources = []
         self.research_images = []  # The list of selected research images
         self.documents = documents
-        self.vector_store = VectorStoreWrapper(vector_store) if vector_store else None
+        self.vector_store = VectorStoreWrapper(
+            vector_store) if vector_store else None
         self.vector_store_filter = vector_store_filter
         self.websocket = websocket
         self.agent = agent
@@ -138,23 +142,25 @@ class GPTResearcher:
         self.parent_query = parent_query
         self.subtopics = subtopics or []
         self.visited_urls = visited_urls or set()
+        self.cache_hits = 0  # Track URLs found in Qdrant cache
         self.verbose = verbose
         self.context = context or []
         self.headers = headers or {}
         self.research_costs = 0.0
         self.log_handler = log_handler
-        self.prompt_family = get_prompt_family(prompt_family or self.cfg.prompt_family, self.cfg)
-        
+        self.prompt_family = get_prompt_family(
+            prompt_family or self.cfg.prompt_family, self.cfg)
+
         # Process MCP configurations if provided
         self.mcp_configs = mcp_configs
         if mcp_configs:
             self._process_mcp_configs(mcp_configs)
-        
+
         self.retrievers = get_retrievers(self.headers, self.cfg)
         self.memory = Memory(
             self.cfg.embedding_provider, self.cfg.embedding_model, **self.cfg.embedding_kwargs
         )
-        
+
         # Initialize Qdrant store if enabled
         self.qdrant_store = None
         self.embeddings_generator = None
@@ -162,34 +168,41 @@ class GPTResearcher:
             try:
                 from .utils.qdrant_store import QdrantStore
                 from .utils.embeddings import create_embeddings_generator
-                
+
                 self.qdrant_store = QdrantStore(
                     host=getattr(self.cfg, 'qdrant_host', 'localhost'),
                     port=getattr(self.cfg, 'qdrant_port', 6333),
                     api_key=getattr(self.cfg, 'qdrant_api_key', None),
-                    collection_name=getattr(self.cfg, 'qdrant_collection_name', 'research_documents')
+                    collection_name=getattr(
+                        self.cfg, 'qdrant_collection_name', 'research_documents')
                 )
-                
+
                 # Create collection if it doesn't exist
                 if not self.qdrant_store.collection_exists():
-                    self.embeddings_generator = create_embeddings_generator(self.cfg)
+                    self.embeddings_generator = create_embeddings_generator(
+                        self.cfg)
                     vector_size = self.embeddings_generator.get_embedding_dimension()
-                    self.qdrant_store.create_collection(vector_size=vector_size)
+                    self.qdrant_store.create_collection(
+                        vector_size=vector_size)
                 else:
-                    self.embeddings_generator = create_embeddings_generator(self.cfg)
-                    
+                    self.embeddings_generator = create_embeddings_generator(
+                        self.cfg)
+
                 if verbose:
                     import logging
-                    logging.getLogger(__name__).info(f"Qdrant store initialized: {self.qdrant_store.collection_name}")
+                    logging.getLogger(__name__).info(
+                        f"Qdrant store initialized: {self.qdrant_store.collection_name}")
             except Exception as e:
                 import logging
-                logging.getLogger(__name__).warning(f"Failed to initialize Qdrant store: {e}. Continuing without Qdrant.")
+                logging.getLogger(__name__).warning(
+                    f"Failed to initialize Qdrant store: {e}. Continuing without Qdrant.")
                 self.qdrant_store = None
                 self.embeddings_generator = None
-        
+
         # Set default encoding to utf-8
         self.encoding = kwargs.get('encoding', 'utf-8')
-        self.kwargs.pop('encoding', None)  # Remove encoding from kwargs to avoid passing it to LLM calls
+        # Remove encoding from kwargs to avoid passing it to LLM calls
+        self.kwargs.pop('encoding', None)
 
         # Initialize components
         self.research_conductor: ResearchConductor = ResearchConductor(self)
@@ -202,22 +215,23 @@ class GPTResearcher:
             self.deep_researcher = DeepResearchSkill(self)
 
         # Handle MCP strategy configuration with backwards compatibility
-        self.mcp_strategy = self._resolve_mcp_strategy(mcp_strategy, mcp_max_iterations)
+        self.mcp_strategy = self._resolve_mcp_strategy(
+            mcp_strategy, mcp_max_iterations)
 
     def _resolve_mcp_strategy(self, mcp_strategy: str | None, mcp_max_iterations: int | None) -> str:
         """
         Resolve MCP strategy from various sources with backwards compatibility.
-        
+
         Priority:
         1. Parameter mcp_strategy (new approach)
         2. Parameter mcp_max_iterations (backwards compatibility)  
         3. Config MCP_STRATEGY
         4. Default "fast"
-        
+
         Args:
             mcp_strategy: New strategy parameter
             mcp_max_iterations: Legacy parameter for backwards compatibility
-            
+
         Returns:
             str: Resolved strategy ("fast", "deep", or "disabled")
         """
@@ -229,22 +243,26 @@ class GPTResearcher:
             # Support old strategy names for backwards compatibility
             elif mcp_strategy == "optimized":
                 import logging
-                logging.getLogger(__name__).warning("mcp_strategy 'optimized' is deprecated, use 'fast' instead")
+                logging.getLogger(__name__).warning(
+                    "mcp_strategy 'optimized' is deprecated, use 'fast' instead")
                 return "fast"
             elif mcp_strategy == "comprehensive":
                 import logging
-                logging.getLogger(__name__).warning("mcp_strategy 'comprehensive' is deprecated, use 'deep' instead")
+                logging.getLogger(__name__).warning(
+                    "mcp_strategy 'comprehensive' is deprecated, use 'deep' instead")
                 return "deep"
             else:
                 import logging
-                logging.getLogger(__name__).warning(f"Invalid mcp_strategy '{mcp_strategy}', defaulting to 'fast'")
+                logging.getLogger(__name__).warning(
+                    f"Invalid mcp_strategy '{mcp_strategy}', defaulting to 'fast'")
                 return "fast"
-        
+
         # Priority 2: Convert mcp_max_iterations for backwards compatibility
         if mcp_max_iterations is not None:
             import logging
-            logging.getLogger(__name__).warning("mcp_max_iterations is deprecated, use mcp_strategy instead")
-            
+            logging.getLogger(__name__).warning(
+                "mcp_max_iterations is deprecated, use mcp_strategy instead")
+
             if mcp_max_iterations == 0:
                 return "disabled"
             elif mcp_max_iterations == 1:
@@ -254,7 +272,7 @@ class GPTResearcher:
             else:
                 # Treat any other number as fast mode
                 return "fast"
-        
+
         # Priority 3: Use config setting
         if hasattr(self.cfg, 'mcp_strategy'):
             config_strategy = self.cfg.mcp_strategy
@@ -266,36 +284,38 @@ class GPTResearcher:
                 return "fast"
             elif config_strategy == "comprehensive":
                 return "deep"
-            
+
         # Priority 4: Default to fast
         return "fast"
 
     def _process_mcp_configs(self, mcp_configs: list[dict]) -> None:
         """
         Process MCP configurations from a list of configuration dictionaries.
-        
+
         This method validates the MCP configurations. It only adds MCP to retrievers
         if no explicit retriever configuration is provided via environment variables.
-        
+
         Args:
             mcp_configs (list[dict]): List of MCP server configuration dictionaries.
         """
         # Check if user explicitly set RETRIEVER environment variable
         user_set_retriever = os.getenv("RETRIEVER") is not None
-        
+
         if not user_set_retriever:
             # Only auto-add MCP if user hasn't explicitly set retrievers
             if hasattr(self.cfg, 'retrievers') and self.cfg.retrievers:
                 # If retrievers is set in config (but not via env var)
-                current_retrievers = set(self.cfg.retrievers.split(",")) if isinstance(self.cfg.retrievers, str) else set(self.cfg.retrievers)
+                current_retrievers = set(self.cfg.retrievers.split(",")) if isinstance(
+                    self.cfg.retrievers, str) else set(self.cfg.retrievers)
                 if "mcp" not in current_retrievers:
                     current_retrievers.add("mcp")
-                    self.cfg.retrievers = ",".join(filter(None, current_retrievers))
+                    self.cfg.retrievers = ",".join(
+                        filter(None, current_retrievers))
             else:
                 # No retrievers configured, use mcp as default
                 self.cfg.retrievers = "mcp"
         # If user explicitly set RETRIEVER, respect their choice and don't auto-add MCP
-        
+
         # Store the mcp_configs for use by the MCP retriever
         self.mcp_configs = mcp_configs
 
@@ -313,11 +333,13 @@ class GPTResearcher:
                 # Add direct logging as backup
                 import logging
                 research_logger = logging.getLogger('research')
-                research_logger.info(f"{event_type}: {json.dumps(kwargs, default=str)}")
+                research_logger.info(
+                    f"{event_type}: {json.dumps(kwargs, default=str)}")
 
             except Exception as e:
                 import logging
-                logging.getLogger('research').error(f"Error in _log_event: {e}", exc_info=True)
+                logging.getLogger('research').error(
+                    f"Error in _log_event: {e}", exc_info=True)
 
     async def conduct_research(self, on_progress=None):
         await self._log_event("research", step="start", details={
@@ -356,8 +378,23 @@ class GPTResearcher:
         })
         self.context = await self.research_conductor.conduct_research()
 
+        # Log cache effectiveness
+        import logging
+        logger = logging.getLogger(__name__)
+        total_urls = len(self.visited_urls)
+        cache_hits = getattr(self, 'cache_hits', 0)
+        scraped_urls = total_urls - cache_hits
+        cache_rate = (cache_hits / total_urls * 100) if total_urls > 0 else 0
+
+        logger.info(
+            f"📊 Research Complete - Cache Stats: {cache_hits} cached + {scraped_urls} scraped = {total_urls} total URLs ({cache_rate:.1f}% cache hit rate)")
+
         await self._log_event("research", step="research_completed", details={
-            "context_length": len(self.context)
+            "context_length": len(self.context),
+            "cache_hits": cache_hits,
+            "urls_scraped": scraped_urls,
+            "total_urls": total_urls,
+            "cache_hit_rate": f"{cache_rate:.1f}%"
         })
         return self.context
 
@@ -467,60 +504,118 @@ class GPTResearcher:
 
     def add_research_sources(self, sources: list[dict[str, Any]]) -> None:
         self.research_sources.extend(sources)
-    
+
     async def store_in_qdrant(self, texts: List[str], metadata: Optional[List[Dict[str, Any]]] = None) -> bool:
         """
         Store texts with embeddings in Qdrant.
-        
+
         Args:
             texts: List of text content to store
             metadata: Optional metadata for each text
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
-        if not self.qdrant_store or not self.embeddings_generator:
+        import logging
+        logger = logging.getLogger(__name__)
+
+        logger.debug(
+            f"🔵 [STORE_QDRANT] Called with {len(texts)} texts, metadata={bool(metadata)}")
+
+        if not self.qdrant_store:
+            logger.warning("❌ [STORE_QDRANT] Qdrant store not available")
+            logger.debug(
+                f"🔵 [STORE_QDRANT] qdrant_store={self.qdrant_store}, type={type(self.qdrant_store)}")
             return False
-        
+
+        if not self.embeddings_generator:
+            logger.warning(
+                "❌ [STORE_QDRANT] Embeddings generator not available")
+            return False
+
+        if not texts:
+            logger.warning("❌ [STORE_QDRANT] No texts to store in Qdrant")
+            return False
+
         try:
-            # Generate embeddings
-            embeddings = self.embeddings_generator.generate_embeddings(texts)
+            logger.info(
+                f"🔵 [STORE_QDRANT] Generating embeddings for {len(texts)} texts")
+            logger.debug(
+                f"🔵 [STORE_QDRANT] Text lengths: {[len(t) for t in texts]}")
+
+            # Generate embeddings (this is a blocking call, run in thread pool)
+            logger.debug(
+                f"🔵 [STORE_QDRANT] Calling asyncio.to_thread for generate_embeddings")
+            embeddings = await asyncio.to_thread(
+                self.embeddings_generator.generate_embeddings, texts
+            )
+            logger.debug(
+                f"🔵 [STORE_QDRANT] Generated embeddings: count={len(embeddings) if embeddings else 0}, type={type(embeddings)}")
+
             if not embeddings:
+                logger.error(
+                    "❌ [STORE_QDRANT] Failed to generate embeddings (None/empty returned)")
                 return False
-            
+
+            logger.info(
+                f"🔵 [STORE_QDRANT] Generated {len(embeddings)} embeddings, storing in Qdrant...")
+            logger.debug(
+                f"🔵 [STORE_QDRANT] Embedding dims: {[len(e) if e else 0 for e in embeddings[:3]]}")
+
             # Store in Qdrant
-            return self.qdrant_store.add_documents(texts, embeddings, metadata)
+            logger.debug(
+                f"🔵 [STORE_QDRANT] Calling asyncio.to_thread for qdrant add_documents")
+            result = await asyncio.to_thread(
+                self.qdrant_store.add_documents,
+                texts,
+                embeddings,
+                metadata
+            )
+            logger.debug(
+                f"🔵 [STORE_QDRANT] add_documents returned: {result} (type={type(result).__name__})")
+
+            if result:
+                logger.info(
+                    f"✅ [STORE_QDRANT] Successfully stored {len(texts)} documents in Qdrant")
+            else:
+                logger.warning(
+                    f"❌ [STORE_QDRANT] Failed to store documents in Qdrant (add_documents returned {result})")
+
+            return result
+
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f"Error storing in Qdrant: {e}")
+            logger.error(
+                f"❌ [STORE_QDRANT] Exception: {type(e).__name__}: {e}", exc_info=True)
             return False
-    
+
     async def retrieve_from_qdrant(self, query: str, limit: int = 5, score_threshold: float = 0.7) -> List[Dict[str, Any]]:
         """
         Retrieve similar documents from Qdrant.
-        
+
         Args:
             query: Query text
             limit: Maximum number of results
             score_threshold: Minimum similarity score
-            
+
         Returns:
             List of retrieved documents with scores
         """
         if not self.qdrant_store or not self.embeddings_generator:
             return []
-        
+
         try:
             # Generate query embedding
-            query_embedding = self.embeddings_generator.generate_embedding(query)
+            query_embedding = self.embeddings_generator.generate_embedding(
+                query)
             if not query_embedding:
                 return []
-            
+
             # Search in Qdrant
             return self.qdrant_store.search(query_embedding, limit, score_threshold)
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Error retrieving from Qdrant: {e}")
+            logging.getLogger(__name__).error(
+                f"Error retrieving from Qdrant: {e}")
             return []
 
     def add_references(self, report_markdown: str, visited_urls: set) -> str:

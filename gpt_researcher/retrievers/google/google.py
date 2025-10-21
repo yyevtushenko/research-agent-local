@@ -4,23 +4,27 @@
 import os
 import requests
 import json
+from ..utils import truncate_query
 
 
 class GoogleSearch:
     """
     Google API Retriever
     """
+
     def __init__(self, query, headers=None, query_domains=None):
         """
         Initializes the GoogleSearch object
         Args:
             query:
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.headers = headers or {}
         self.query_domains = query_domains or None
-        self.api_key = self.headers.get("google_api_key") or self.get_api_key()  # Use the passed api_key or fallback to environment variable
-        self.cx_key = self.headers.get("google_cx_key") or self.get_cx_key()  # Use the passed cx_key or fallback to environment variable
+        # Use the passed api_key or fallback to environment variable
+        self.api_key = self.headers.get("google_api_key") or self.get_api_key()
+        # Use the passed cx_key or fallback to environment variable
+        self.cx_key = self.headers.get("google_cx_key") or self.get_cx_key()
 
     def get_api_key(self):
         """
@@ -59,7 +63,8 @@ class GoogleSearch:
         # Build query with domain restrictions if specified
         search_query = self.query
         if self.query_domains and len(self.query_domains) > 0:
-            domain_query = " OR ".join([f"site:{domain}" for domain in self.query_domains])
+            domain_query = " OR ".join(
+                [f"site:{domain}" for domain in self.query_domains])
             search_query = f"({domain_query}) {self.query}"
 
         print("Searching with query {0}...".format(search_query))

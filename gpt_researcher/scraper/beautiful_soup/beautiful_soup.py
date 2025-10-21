@@ -1,7 +1,15 @@
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
 from urllib.parse import urljoin
+import warnings
+import logging
 
 from ..utils import get_relevant_images, extract_title, get_text_from_soup, clean_soup
+
+logger = logging.getLogger(__name__)
+
+# Suppress BeautifulSoup XML parsing warning when HTML parser is used on XML
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
+
 
 class BeautifulSoupScraper:
 
@@ -13,7 +21,7 @@ class BeautifulSoupScraper:
         """
         This function scrapes content from a webpage by making a GET request, parsing the HTML using
         BeautifulSoup, and extracting script and style elements before returning the cleaned content.
-        
+
         Returns:
           The `scrape` method is returning the cleaned and extracted content from the webpage specified
         by the `self.link` attribute. The method fetches the webpage content, removes script and style
@@ -22,8 +30,13 @@ class BeautifulSoupScraper:
         """
         try:
             response = self.session.get(self.link, timeout=4)
+
+            # Determine if content is XML or HTML based on content-type header
+            content_type = response.headers.get('content-type', '').lower()
+            parser = 'xml' if 'xml' in content_type else 'lxml'
+
             soup = BeautifulSoup(
-                response.content, "lxml", from_encoding=response.encoding
+                response.content, parser, from_encoding=response.encoding
             )
 
             soup = clean_soup(soup)
@@ -31,12 +44,14 @@ class BeautifulSoupScraper:
             content = get_text_from_soup(soup)
 
             image_urls = get_relevant_images(soup, self.link)
-            
+
             # Extract the title using the utility function
             title = extract_title(soup)
 
             return content, image_urls, title
 
         except Exception as e:
-            print("Error! : " + str(e))
+            # Log scraping errors without scary traces - these are common (timeouts, SSL issues, etc.)
+            logger.debug(
+                f"Failed to scrape {self.link}: {type(e).__name__}: {str(e)}")
             return "", [], ""

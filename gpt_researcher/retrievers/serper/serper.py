@@ -4,12 +4,14 @@
 import os
 import requests
 import json
+from ..utils import truncate_query
 
 
 class SerperSearch():
     """
     Google Serper Retriever with support for country, language, and date filtering
     """
+
     def __init__(self, query, query_domains=None, country=None, language=None, time_range=None, exclude_sites=None):
         """
         Initializes the SerperSearch object
@@ -21,7 +23,7 @@ class SerperSearch():
             time_range (str, optional): Time range filter (e.g., 'qdr:h', 'qdr:d', 'qdr:w', 'qdr:m', 'qdr:y'). Defaults to None.
             exclude_sites (list, optional): List of sites to exclude from search results. Defaults to None.
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.query_domains = query_domains or None
         self.country = country or os.getenv("SERPER_REGION")
         self.language = language or os.getenv("SERPER_LANGUAGE")
@@ -102,7 +104,8 @@ class SerperSearch():
 
         data = json.dumps(search_params)
 
-        resp = requests.request("POST", url, timeout=10, headers=headers, data=data)
+        resp = requests.request("POST", url, timeout=10,
+                                headers=headers, data=data)
 
         # Preprocess the results
         if resp is None:

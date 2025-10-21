@@ -1,3 +1,4 @@
+from backend.server.app import app
 from dotenv import load_dotenv
 import logging
 from pathlib import Path
@@ -23,15 +24,19 @@ logging.getLogger('fontTools').setLevel(logging.WARNING)
 logging.getLogger('fontTools.subset').setLevel(logging.WARNING)
 logging.getLogger('fontTools.ttLib').setLevel(logging.WARNING)
 
+# Suppress DuckDuckGo Wikipedia DNS errors (wt.wikipedia.org doesn't exist)
+# This is a known issue with the ddgs library - Wikipedia is one of many engines
+# and its failure doesn't affect search results
+logging.getLogger('ddgs').setLevel(logging.WARNING)
+
 # Create logger instance
 logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-from backend.server.app import app
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     logger.info("Starting server...")
     uvicorn.run(app, host="0.0.0.0", port=8000)

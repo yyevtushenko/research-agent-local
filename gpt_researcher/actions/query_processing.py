@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 async def get_search_results(query: str, retriever: Any, query_domains: List[str] = None, researcher=None) -> List[Dict[str, Any]]:
     """
     Get web search results for a given query.
@@ -22,17 +23,45 @@ async def get_search_results(query: str, retriever: Any, query_domains: List[str
     Returns:
         A list of search results
     """
+    # Hard limit: Truncate queries to prevent sending entire prompts to search engines
+    # Get max length from config if researcher is available, otherwise use default
+    MAX_QUERY_LENGTH = 1024
+    if researcher and hasattr(researcher, 'cfg') and hasattr(researcher.cfg, 'max_search_query_length'):
+        MAX_QUERY_LENGTH = researcher.cfg.max_search_query_length
+
+    if len(query) > MAX_QUERY_LENGTH:
+        original_length = len(query)
+        query = query[:MAX_QUERY_LENGTH].strip()
+        logger.warning(
+            f"Search query truncated from {original_length} to {MAX_QUERY_LENGTH} characters. "
+            f"Original query was likely a prompt instead of a search query. Truncated query: '{query[:100]}...'"
+        )
+
     # Check if this is an MCP retriever and pass the researcher instance
     if "mcpretriever" in retriever.__name__.lower():
         search_retriever = retriever(
-            query, 
+            query,
             query_domains=query_domains,
             researcher=researcher  # Pass researcher instance for MCP retrievers
         )
     else:
         search_retriever = retriever(query, query_domains=query_domains)
-    
-    return search_retriever.search()
+
+    # Get excluded domains from researcher config if available
+    excluded_domains = []
+    if researcher and hasattr(researcher, 'cfg') and hasattr(researcher.cfg, 'excluded_domains'):
+        excluded_domains = researcher.cfg.excluded_domains
+
+    # Pass excluded_domains if the retriever supports it
+    import inspect
+    search_signature = inspect.signature(search_retriever.search)
+    if 'excluded_domains' in search_signature.parameters and excluded_domains:
+        logger.info(
+            f"✓ Passing {len(excluded_domains)} excluded domains to {retriever.__name__}")
+        return search_retriever.search(excluded_domains=excluded_domains)
+    else:
+        return search_retriever.search()
+
 
 async def generate_sub_queries(
     query: str,
@@ -73,15 +102,18 @@ async def generate_sub_queries(
             model=cfg.strategic_llm_model,
             messages=[{"role": "user", "content": gen_queries_prompt}],
             llm_provider=cfg.strategic_llm_provider,
-            max_tokens=None,
+            # Use configured limit instead of None (Anthropic requires integer)
+            max_tokens=cfg.strategic_token_limit,
             llm_kwargs=cfg.llm_kwargs,
             reasoning_effort=ReasoningEfforts.Medium.value,
             cost_callback=cost_callback,
             **kwargs
         )
     except Exception as e:
-        logger.warning(f"Error with strategic LLM: {e}. Retrying with max_tokens={cfg.strategic_token_limit}.")
-        logger.warning(f"See https://github.com/assafelovic/gpt-researcher/issues/1022")
+        logger.warning(
+            f"Error with strategic LLM: {e}. Retrying with max_tokens={cfg.strategic_token_limit}.")
+        logger.warning(
+            f"See https://github.com/assafelovic/gpt-researcher/issues/1022")
         try:
             response = await create_chat_completion(
                 model=cfg.strategic_llm_model,
@@ -92,10 +124,13 @@ async def generate_sub_queries(
                 cost_callback=cost_callback,
                 **kwargs
             )
-            logger.warning(f"Retrying with max_tokens={cfg.strategic_token_limit} successful.")
+            logger.warning(
+                f"Retrying with max_tokens={cfg.strategic_token_limit} successful.")
         except Exception as e:
-            logger.warning(f"Retrying with max_tokens={cfg.strategic_token_limit} failed.")
-            logger.warning(f"Error with strategic LLM: {e}. Falling back to smart LLM.")
+            logger.warning(
+                f"Retrying with max_tokens={cfg.strategic_token_limit} failed.")
+            logger.warning(
+                f"Error with strategic LLM: {e}. Falling back to smart LLM.")
             response = await create_chat_completion(
                 model=cfg.smart_llm_model,
                 messages=[{"role": "user", "content": gen_queries_prompt}],
@@ -108,6 +143,7 @@ async def generate_sub_queries(
             )
 
     return json_repair.loads(response)
+
 
 async def plan_research_outline(
     query: str,
@@ -139,21 +175,23 @@ async def plan_research_outline(
     # Handle the case where retriever_names is not provided
     if retriever_names is None:
         retriever_names = []
-    
+
     # For MCP retrievers, we may want to skip sub-query generation
     # Check if MCP is the only retriever or one of multiple retrievers
     if retriever_names and ("mcp" in retriever_names or "MCPRetriever" in retriever_names):
-        mcp_only = (len(retriever_names) == 1 and 
-                   ("mcp" in retriever_names or "MCPRetriever" in retriever_names))
-        
+        mcp_only = (len(retriever_names) == 1 and
+                    ("mcp" in retriever_names or "MCPRetriever" in retriever_names))
+
         if mcp_only:
             # If MCP is the only retriever, skip sub-query generation
-            logger.info("Using MCP retriever only - skipping sub-query generation")
+            logger.info(
+                "Using MCP retriever only - skipping sub-query generation")
             # Return the original query to prevent additional search iterations
             return [query]
         else:
             # If MCP is one of multiple retrievers, generate sub-queries for the others
-            logger.info("Using MCP with other retrievers - generating sub-queries for non-MCP retrievers")
+            logger.info(
+                "Using MCP with other retrievers - generating sub-queries for non-MCP retrievers")
 
     # Generate sub-queries for research outline
     sub_queries = await generate_sub_queries(

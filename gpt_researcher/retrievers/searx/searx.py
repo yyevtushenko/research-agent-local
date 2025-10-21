@@ -3,19 +3,21 @@ import json
 import requests
 from typing import List, Dict
 from urllib.parse import urljoin
+from ..utils import truncate_query
 
 
 class SearxSearch():
     """
     SearxNG API Retriever
     """
+
     def __init__(self, query: str, query_domains=None):
         """
         Initializes the SearxSearch object
         Args:
             query: Search query string
         """
-        self.query = query
+        self.query = truncate_query(query)
         self.query_domains = query_domains or None
         self.base_url = self.get_searxng_url()
 
@@ -47,8 +49,8 @@ class SearxSearch():
         search_url = urljoin(self.base_url, "search")
         # TODO: Add support for query domains
         params = {
-            # The search query. 
-            'q': self.query, 
+            # The search query.
+            'q': self.query,
             # Output format of results. Format needs to be activated in searxng config.
             'format': 'json'
         }

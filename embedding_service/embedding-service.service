@@ -1,0 +1,49 @@
+[Unit]
+Description=Research Agent Embedding Microservice
+Documentation=https://github.com/assafelovic/gpt-researcher
+After=network.target
+
+[Service]
+Type=simple
+User=yy
+Group=yy
+WorkingDirectory=/home/yy/extra/research-agent-local
+
+# Virtual environment
+Environment="PATH=/home/yy/work/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="VIRTUAL_ENV=/home/yy/work"
+
+# Model configuration
+Environment="EMBEDDING_MODEL_PATH=/home/yy/.cache/research-agent-local/models/snowflake-arctic-embed-l-v2.0.F16.gguf"
+Environment="LLAMACPP_N_CTX=8000"
+Environment="LLAMACPP_N_BATCH=512"
+Environment="LLAMACPP_N_UBATCH=512"
+Environment="LLAMACPP_N_GPU_LAYERS=25"
+
+# Service configuration
+Environment="EMBEDDING_HOST=0.0.0.0"
+Environment="EMBEDDING_PORT=8001"
+
+# Start service
+ExecStart=/home/yy/work/bin/python -m uvicorn embedding_service.server:app --host 0.0.0.0 --port 8001 --log-level info
+
+# Restart configuration
+Restart=always
+RestartSec=10
+StartLimitInterval=5min
+StartLimitBurst=4
+
+# Security hardening (optional, uncomment if needed)
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=read-only
+# ReadWritePaths=/home/yy/extra/research-agent-local/outputs
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=embedding-service
+
+[Install]
+WantedBy=multi-user.target

@@ -17,6 +17,8 @@ class BaseConfig(TypedDict):
     TEMPERATURE: float
     USER_AGENT: str
     MAX_SEARCH_RESULTS_PER_QUERY: int
+    # None = unlimited (for Qdrant)
+    MAX_CONTEXT_RESULTS_PER_QUERY: Union[int, None]
     MEMORY_BACKEND: str
     TOTAL_WORDS: int
     REPORT_FORMAT: str
@@ -47,4 +49,6 @@ class BaseConfig(TypedDict):
     QDRANT_COLLECTION_NAME: str
     EMBEDDING_MODEL: str
     QDRANT_ENABLED: bool
+    LLAMACPP_MODEL_PATH: Union[str, None]
+    EXCLUDED_DOMAINS: List[str]
     VERBOSE: bool

@@ -40,17 +40,17 @@ class PromptFamily:
     def generate_mcp_tool_selection_prompt(query: str, tools_info: List[Dict], max_tools: int = 3) -> str:
         """
         Generate prompt for LLM-based MCP tool selection.
-        
+
         Args:
             query: The research query
             tools_info: List of available tools with their metadata
             max_tools: Maximum number of tools to select
-            
+
         Returns:
             str: The tool selection prompt
         """
         import json
-        
+
         return f"""You are a research assistant helping to select the most relevant tools for a research query.
 
 RESEARCH QUERY: "{query}"
@@ -86,11 +86,11 @@ Select exactly {max_tools} tools, ranked by relevance to the research query.
     def generate_mcp_research_prompt(query: str, selected_tools: List) -> str:
         """
         Generate prompt for MCP research execution with selected tools.
-        
+
         Args:
             query: The research query
             selected_tools: List of selected MCP tools
-            
+
         Returns:
             str: The research execution prompt
         """
@@ -101,7 +101,7 @@ Select exactly {max_tools} tools, ranked by relevance to the research query.
                 tool_names.append(tool.name)
             else:
                 tool_names.append(str(tool))
-        
+
         return f"""You are a research assistant with access to specialized tools. Your task is to research the following query and provide comprehensive, accurate information.
 
 RESEARCH QUERY: "{query}"
@@ -151,15 +151,55 @@ Context: {context}
 Use this context to inform and refine your search queries. The context provides real-time web information that can help you generate more specific and relevant queries. Consider any current events, recent developments, or specific details mentioned in the context that could enhance the search queries.
 """ if context else ""
 
-        dynamic_example = ", ".join([f'"query {i+1}"' for i in range(max_iterations)])
+        dynamic_example = ", ".join(
+            [f'"query {i+1}"' for i in range(max_iterations)])
 
-        return f"""Write {max_iterations} google search queries to search online that form an objective opinion from the following task: "{task}"
+        return f"""Write {max_iterations} search queries to search online that form an objective opinion from the following task: "{task}"
 
 Assume the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y')} if required.
 
 {context_prompt}
+
+IMPORTANT: Generate queries using DuckDuckGo search syntax:
+✅ SUPPORTED operators:
+  - site:example.com (MUST be FULL domain - requires .com/.de/.org/etc)
+  - "exact phrase" (use quotes for exact matches)
+  - keyword1 keyword2 (space = AND)
+  - OR (uppercase OR between terms)
+  - -excluded (minus to exclude words)
+  - filetype:pdf (supported: pdf, doc, docx, xls, xlsx, ppt, pptx, html)
+  - intitle:keyword (page title includes keyword)
+  - inurl:keyword (page URL includes keyword)
+
+❌ INVALID syntax (DO NOT USE):
+  - site:de (MISSING domain - needs example.de)
+  - site:nl OR site:be (MISSING domain names - needs full FQDN)
+  - site:*.de (no wildcard domains)
+  - site:example.* (no wildcard TLDs)
+
+CRITICAL: site: operator requires FULL QUALIFIED DOMAIN NAME (FQDN)
+  ❌ WRONG: site:de, site:nl, site:com
+  ✅ CORRECT: site:siemens.de, site:philips.nl, site:example.com
+
+STRATEGY for country-specific searches WITHOUT knowing exact domains:
+Use country/language/region keywords directly in the query:
+  - "keyword Germany German Deutschland"
+  - "keyword Netherlands Dutch Nederland"
+  - "keyword DACH region" (Germany/Austria/Switzerland)
+  - "keyword Benelux" (Belgium/Netherlands/Luxembourg)
+
+⚠️ QUERY LENGTH CONSTRAINTS:
+  - Each query MUST be concise and focused (maximum 10-15 words)
+  - Extract ONLY the essential keywords and key phrases from the task
+  - DO NOT include lengthy instructions, context, or explanations in the query
+  - Search engines work best with SHORT, targeted queries
+  - ❌ WRONG: "Research Agent Task Specification: European Servo Production Feasibility Study MISSION OBJECTIVE Conduct targeted intelligence..."
+  - ✅ CORRECT: "European servo production Austria automotive manufacturing"
+  - ✅ CORRECT: "Austrian defense manufacturing facilities Linz Wels"
+  - ✅ CORRECT: "NdFeB magnet suppliers Europe alternative sources"
+
 You must respond with a list of strings in the following format: [{dynamic_example}].
-The response should contain ONLY the list.
+The response should contain ONLY the list of SHORT, focused search queries (10-15 words maximum each).
 """
 
     @staticmethod
@@ -597,7 +637,6 @@ Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y'
 - The output must be in {language} language.
 """
 
-
     @staticmethod
     def generate_report_conclusion(query: str, report_content: str, language: str = "english", report_format: str = "apa") -> str:
         """
@@ -638,7 +677,6 @@ Assume that the current date is {datetime.now(timezone.utc).strftime('%B %d, %Y'
 class GranitePromptFamily(PromptFamily):
     """Prompts for IBM's granite models"""
 
-
     def _get_granite_class(self) -> type[PromptFamily]:
         """Get the right granite prompt family based on the version number"""
         if "3.3" in self.cfg.smart_llm:
@@ -666,8 +704,8 @@ class Granite3PromptFamily(PromptFamily):
         if not docs:
             return ""
         all_documents = "\n\n".join([
-            f"Document {doc.metadata.get('source', i)}\n" + \
-            f"Title: {doc.metadata.get('title')}\n" + \
+            f"Document {doc.metadata.get('source', i)}\n" +
+            f"Title: {doc.metadata.get('title')}\n" +
             doc.page_content
             for i, doc in enumerate(docs)
             if top_n is None or i < top_n
@@ -717,6 +755,7 @@ class Granite33PromptFamily(PromptFamily):
 
 ## Factory ######################################################################
 
+
 # This is the function signature for the various prompt generator functions
 PROMPT_GENERATOR = Callable[
     [
@@ -724,7 +763,7 @@ PROMPT_GENERATOR = Callable[
         str,        # context
         str,        # report_source
         str,        # report_format
-        str | None, # tone
+        str | None,  # tone
         int,        # total_words
         str,        # language
     ],
@@ -745,7 +784,8 @@ def get_prompt_by_report_type(
     report_type: str,
     prompt_family: type[PromptFamily] | PromptFamily,
 ):
-    prompt_by_type = getattr(prompt_family, report_type_mapping.get(report_type, ""), None)
+    prompt_by_type = getattr(
+        prompt_family, report_type_mapping.get(report_type, ""), None)
     default_report_type = ReportType.ResearchReport.value
     if not prompt_by_type:
         warnings.warn(
@@ -754,7 +794,8 @@ def get_prompt_by_report_type(
             f"Using default report type: {default_report_type} prompt.",
             UserWarning,
         )
-        prompt_by_type = getattr(prompt_family, report_type_mapping.get(default_report_type))
+        prompt_by_type = getattr(
+            prompt_family, report_type_mapping.get(default_report_type))
     return prompt_by_type
 
 

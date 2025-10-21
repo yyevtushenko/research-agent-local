@@ -1,5 +1,6 @@
 from typing import Any
 from colorama import Fore, Style
+from datetime import datetime
 
 from gpt_researcher.utils.workers import WorkerPool
 from ..scraper import Scraper
@@ -31,9 +32,26 @@ async def scrape_urls(
     )
 
     try:
-        scraper = Scraper(urls, user_agent, cfg.scraper, worker_pool=worker_pool)
+        # Get excluded domains from config
+        excluded_domains = cfg.excluded_domains if cfg and hasattr(
+            cfg, 'excluded_domains') else []
+
+        scraper = Scraper(urls, user_agent, cfg.scraper,
+                          worker_pool=worker_pool, excluded_domains=excluded_domains)
         scraped_data = await scraper.run()
+
+        # Add timestamp metadata for cache tracking
+        current_timestamp = datetime.now().isoformat()
         for item in scraped_data:
+            # Add metadata if not present
+            if 'metadata' not in item:
+                item['metadata'] = {}
+            # Store timestamp for cache freshness checks
+            item['metadata']['timestamp'] = current_timestamp
+            # Ensure URL is in metadata for cache lookup
+            if 'url' in item and item['url']:
+                item['metadata']['url'] = item['url']
+
             if 'image_urls' in item:
                 images.extend(item['image_urls'])
     except Exception as e:
@@ -61,6 +79,7 @@ async def filter_urls(urls: list[str], config: Config) -> list[str]:
             filtered_urls.append(url)
     return filtered_urls
 
+
 async def extract_main_content(html_content: str) -> str:
     """
     Extract the main content from HTML.
@@ -75,6 +94,7 @@ async def extract_main_content(html_content: str) -> str:
     # This could involve using libraries like BeautifulSoup or custom parsing logic
     # For now, we'll just return the raw HTML as a placeholder
     return html_content
+
 
 async def process_scraped_data(scraped_data: list[dict[str, Any]], config: Config) -> list[dict[str, Any]]:
     """

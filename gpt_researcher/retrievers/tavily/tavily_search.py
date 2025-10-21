@@ -5,6 +5,7 @@ import os
 from typing import Literal, Sequence, Optional
 import requests
 import json
+from ..utils import truncate_query
 
 
 class TavilySearch:
@@ -12,7 +13,7 @@ class TavilySearch:
     Tavily API Retriever
     """
 
-    def __init__(self, query, headers=None, topic="general", query_domains=None):
+    def __init__(self, query, headers=None, topic="general", query_domains=None, api_key=None):
         """
         Initializes the TavilySearch object.
 
@@ -21,15 +22,15 @@ class TavilySearch:
             headers (dict, optional): Additional headers to include in the request. Defaults to None.
             topic (str, optional): The topic for the search. Defaults to "general".
             query_domains (list, optional): List of domains to include in the search. Defaults to None.
+            api_key (str, optional): API key for Tavily. Defaults to None.
         """
-        self.query = query
-        self.headers = headers or {}
+        self.query = truncate_query(query)
+        self.headers = headers or {"Content-Type": "application/json"}
         self.topic = topic
         self.base_url = "https://api.tavily.com/search"
-        self.api_key = self.get_api_key()
-        self.headers = {
-            "Content-Type": "application/json",
-        }
+        self.api_key = api_key or os.environ.get("TAVILY_API_KEY")
+        if not self.api_key:
+            raise ValueError("TAVILY_API_KEY environment variable is not set")
         self.query_domains = query_domains or None
 
     def get_api_key(self):
@@ -48,7 +49,6 @@ class TavilySearch:
                 )
                 return ""
         return api_key
-
 
     def _search(
         self,
@@ -116,6 +116,7 @@ class TavilySearch:
                 {"href": obj["url"], "body": obj["content"]} for obj in sources
             ]
         except Exception as e:
-            print(f"Error: {e}. Failed fetching sources. Resulting in empty response.")
+            print(
+                f"Error: {e}. Failed fetching sources. Resulting in empty response.")
             search_response = []
         return search_response

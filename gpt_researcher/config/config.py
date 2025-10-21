@@ -2,10 +2,14 @@ import json
 import os
 import warnings
 from typing import Dict, Any, List, Union, Type, get_origin, get_args
+from dotenv import load_dotenv
 
 from gpt_researcher.llm_provider.generic.base import ReasoningEfforts
 from .variables.default import DEFAULT_CONFIG
 from .variables.base import BaseConfig
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Config:
